@@ -4,15 +4,17 @@
 		<title>数码宝贝粒子效果（GPU运算）</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<style>
-			body {background-color: #000;margin: 0px;overflow: hidden;}
-		</style>
+		<link type="text/css" rel="styleSheet"  href="load.css" />
 	</head>
 	<body>
 		<!-- 改编自https://www.cnblogs.com/wanbo/p/6869175.html -->
+		<div id="load" class="loading">
+		  <div><i></i><i></i><i></i><i></i><i></i></div>
+	    </div>
 		<div id="container"></div>
+		<script src="https://code.createjs.com/preloadjs-0.6.2.min.js"></script>
+
 		<script src="js/three.js"></script>
-		<script src="js/stats.min.js"></script>
 		<script src="js/tween.min.js"></script>
 
 		<script src="js/shaders/ConvolutionShader.js"></script>
@@ -58,6 +60,31 @@
 		</script>
 
 		<script type="text/javascript">
+			// preload.js
+			//放置静态资源的数组
+			var manifest = [
+				{src: 'js/three.js', id: 'three'},
+				{src: 'js/tween.min.js', id: 'tween'},
+				{src: 'js/shaders/ConvolutionShader.js', id: 'ConvolutionShader'},
+				{src: 'js/shaders/CopyShader.js', id: 'CopyShader'},
+				{src: 'js/shaders/FilmShader.js', id: 'FilmShader'},
+				{src: 'js/shaders/FocusShader.js', id: 'FocusShader'},
+				{src: 'js/postprocessing/EffectComposer.js', id: 'EffectComposer'},
+				{src: 'js/postprocessing/MaskPass.js', id: 'MaskPass'},
+				{src: 'js/postprocessing/RenderPass.js', id: 'RenderPass'},
+				{src: 'js/postprocessing/BloomPass.js', id: 'BloomPass'},
+				{src: 'js/postprocessing/ShaderPass.js', id: 'ShaderPass'},
+				{src: 'js/postprocessing/FilmPass.js', id: 'FilmPass'}
+			];
+			var loader = new createjs.LoadQueue(false,'','Anonymous');  //LoadQueue ( [preferXHR=true]  [basePath=""]  [crossOrigin=""] )
+			loader.on('complete', handleComplete);
+			loader.loadManifest(manifest);
+			//资源加载成功后,进行处理
+			function handleComplete() {
+				document.getElementById('load').style.display = 'none';
+			    //app.init();
+			}
+
 			var app = {
 				init: function(){
 					var self = this;
@@ -269,7 +296,7 @@
 					this.composer.render( 0.01 );
 				}
 			}
-			app.init();
+			//app.init();
 
 		</script>
 	</body>
