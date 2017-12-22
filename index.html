@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>数码宝贝粒子效果（GPU运算）</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {background-color: #000;margin: 0px;overflow: hidden;}
+		</style>
+	</head>
+	<body>
+		<!-- 改编自https://www.cnblogs.com/wanbo/p/6869175.html -->
+		<div id="container"></div>
+		<script src="js/three.js"></script>
+		<script src="js/stats.min.js"></script>
+		<script src="js/tween.min.js"></script>
+
+		<script src="js/shaders/ConvolutionShader.js"></script>
+		<script src="js/shaders/CopyShader.js"></script>
+		<script src="js/shaders/FilmShader.js"></script>
+		<script src="js/shaders/FocusShader.js"></script>
+		<script src="js/postprocessing/EffectComposer.js"></script>
+		<script src="js/postprocessing/MaskPass.js"></script>
+		<script src="js/postprocessing/RenderPass.js"></script>
+		<script src="js/postprocessing/BloomPass.js"></script>
+		<script src="js/postprocessing/ShaderPass.js"></script>
+		<script src="js/postprocessing/FilmPass.js"></script>
+		<!-- 顶点着色器 -->
+		<script type="x-shader/x-vertex" id="vertexshader">
+			attribute float size;
+			attribute vec3 position2;
+			uniform float val;
+			varying vec3 vPos;
+
+			void main() {
+				// val 非0即1，用于两个模型之间切换
+				vPos.x = position.x * val + position2.x * (1.-val);
+				vPos.y = position.y * val + position2.y * (1.-val);
+				vPos.z = position.z * val + position2.z * (1.-val);
+
+				vec4 mvPosition = modelViewMatrix * vec4( vPos, 1.0 );
+
+				gl_PointSize = size * ( 50.0 / -mvPosition.z );
+
+				gl_Position = projectionMatrix * mvPosition;
+
+			}
+
+		</script>
+		<!-- 片元着色器 -->
+		<script type="x-shader/x-fragment" id="fragmentshader">
+
+			uniform sampler2D texture;
+			void main() {
+				gl_FragColor = texture2D( texture, gl_PointCoord );
+			}
+
+		</script>
+
+		<script type="text/javascript">
+			var app = {
+				init: function(){
+					var self = this;
+					var renderer, scene, camera, stats, tween;
+					var composer, effectFocus;
+					var WIDTH = window.innerWidth;
+					var HEIGHT = window.innerHeight;
+					var container = document.getElementById('container');
+					camera = new THREE.PerspectiveCamera(40, WIDTH/HEIGHT, 1, 10000 ); // 相机（“拍”下即所见）
+					camera.position.z = 80; /// 相机架的位置，值↑ 远
+					camera.position.x = 20; /// 值↑ 往左
+					scene = new THREE.Scene();
+
+					scene.fog = new THREE.FogExp2( 0x000104, 0.0000675 ); // 雾效果
+					//camera.lookAt( scene.position );
+
+					// 平行光
+					var light = new THREE.DirectionalLight( 0xffffff );
+					light.position.set( 0, 200, 0 );
+					scene.add( light );
+
+					self.addObjs();
+
+					renderer = new THREE.WebGLRenderer();
+					renderer.setPixelRatio(window.devicePixelRatio); //设置canvas的像素比为当前设备的屏幕像素比，避免高分屏下模糊
+					renderer.setSize(WIDTH, HEIGHT);
+					renderer.autoClear = false;
+
+					container.appendChild(renderer.domElement);
+
+					// 性能插件
+					//stats = new Stats();
+					//container.appendChild(stats.dom);
+
+					window.addEventListener( 'resize', function(e){
+						self.resize();
+					}, false);
+
+					var renderModel = new THREE.RenderPass( scene, camera );
+					var effectBloom = new THREE.BloomPass( 0.75 );
+					var effectFilm = new THREE.FilmPass( 0.5, 0.5, 1448, false );
+
+					effectFocus = new THREE.ShaderPass( THREE.FocusShader );
+
+					effectFocus.uniforms[ "screenWidth" ].value = window.innerWidth;
+					effectFocus.uniforms[ "screenHeight" ].value = window.innerHeight;
+
+					effectFocus.renderToScreen = true; // 输出至屏幕
+
+					// 效果组合器
+					composer = new THREE.EffectComposer( renderer );
+
+					composer.addPass( renderModel );
+					composer.addPass( effectBloom );
+					composer.addPass( effectFilm );
+					composer.addPass( effectFocus );
+
+					self.scene = scene;
+					self.camera = camera;
+					self.renderer = renderer;
+					self.composer = composer;
+					self.effectFocus = effectFocus;
+
+					(function(){
+						TWEEN.update();
+						//stats.update();
+						self.update();
+						window.requestAnimationFrame(arguments.callee)
+					})();
+				},
+				addObjs: function(){
+					var self = this;
+					var loader = new THREE.JSONLoader();
+					var obj1, obj2, loaded;
+					/// obj1 && obj2 && !loaded 可能是防止加載文件过大，影响执行先后顺序而作的控制
+				    /// 保证obj1, obj2加载完成后才调用addPartice()
+					loader.load('obj/ygs2.json', function(obj) {
+						obj1 = obj;
+						if(obj1 && obj2 && !loaded) {
+							loaded = true;
+							self.addPartice(obj1, obj2);
+						}
+					});
+					loader.load('obj/gqs1.json', function(obj) {
+						obj2 = obj;
+						if(obj1 && obj2 && !loaded) {
+							loaded = true;
+							self.addPartice(obj1, obj2);
+						}
+					});
+				},
+				addPartice: function(obj1, obj2){
+					var moreObj, lessObj;
+					/// 顶点数最多作为moreObj,用于显示
+					if(obj1.vertices.length > obj2.vertices.length) {
+						moreObj = obj1;
+						lessObj = obj2;
+					} else {
+						moreObj = obj2;
+						lessObj = obj1;
+					}
+					/// 使用缓存，节约GPU性能
+					moreObj = new THREE.BufferGeometry().fromGeometry(moreObj);
+					lessObj = new THREE.BufferGeometry().fromGeometry(lessObj);
+
+					var morePos = moreObj.attributes.position.array;
+					var lessPos = lessObj.attributes.position.array;
+					var moreLen = morePos.length;
+					var lessLen = lessPos.length;
+
+					/// 以最大顶点数创建 32位浮点值的类型化数组
+					var position2 = new Float32Array(moreLen);
+					/// 小模型放在position2
+					position2.set(lessPos);
+					/// 核心：多余点处理
+					/// 使用lessPos上的值给position2[lessLen] ~ position2[moreLen] 赋值
+					for(var i = [lessLen], j = 0; i < moreLen; i++, j++) {
+						j %= lessLen;
+						position2[i] = lessPos[j];
+						position2[i+1] = lessPos[j+1];
+						position2[i+2] = lessPos[j+2];
+					}
+
+					/// 指定点的大小
+					var sizes = new Float32Array(moreLen);
+					for (var i = 0; i < moreLen; i++) {
+						sizes[i] = 4;
+					}
+
+					/// 添加属性供着色器使用
+					/// BufferAttribute( array, itemSize, normalized )
+					/// (position2, 3) 即 i, i+1, i+2
+					moreObj.addAttribute('size', new THREE.BufferAttribute(sizes, 1));
+					moreObj.addAttribute('position2', new THREE.BufferAttribute(position2, 3));
+					var uniforms = {
+						color:{value: new THREE.Color(0xffffff)},
+						texture:{value: new THREE.TextureLoader().load( "image/dot.png")},
+						val: {value: 1.0}
+					};
+					var shaderMaterial = new THREE.ShaderMaterial({
+						uniforms:       uniforms,
+						vertexShader:   document.getElementById('vertexshader').textContent,
+						fragmentShader: document.getElementById('fragmentshader').textContent,
+						blending:       THREE.AdditiveBlending,
+						depthTest:      false,
+						transparent:    true
+					});
+					/// 创建例子对象
+					particleSystem = new THREE.Points(moreObj, shaderMaterial);
+					particleSystem.position.y = -15;
+
+					// 切换动画控制
+					var pos = {val: 1};
+					tween = new TWEEN.Tween(pos).to({val: 0}, 2000).easing(TWEEN.Easing.Quadratic.InOut).delay(5000).onUpdate(callback);
+					tweenBack = new TWEEN.Tween(pos).to({val: 1}, 2000).easing(TWEEN.Easing.Quadratic.InOut).delay(5000).onUpdate(callback2);
+					tween.chain(tweenBack);
+					tweenBack.chain(tween);
+					tween.start();
+
+					// callback拆分往返2个，以改变x位置(存在问题哟)
+					function callback(){
+						particleSystem.position.x += 0.5;
+
+						particleSystem.material.uniforms.val.value = this.val;
+					}
+
+					function callback2(){
+						particleSystem.position.x -= 0.5;
+
+						particleSystem.material.uniforms.val.value = this.val;
+					}
+
+					this.scene.add(particleSystem);
+					this.particleSystem = particleSystem;
+				},
+				resize: function(){
+					this.camera.aspect = window.innerWidth/window.innerHeight;
+					this.camera.updateProjectionMatrix();
+
+					this.composer.reset();
+					this.effectFocus.uniforms[ "screenWidth" ].value = window.innerWidth;
+				    this.effectFocus.uniforms[ "screenHeight" ].value = window.innerHeight;
+
+					this.renderer.setSize(window.innerWidth, window.innerHeight);
+				},
+				update: function(time){
+					var time = Date.now() * 0.005;
+					if(this.particleSystem) {
+
+						var bufferObj = this.particleSystem.geometry;
+
+						/// 点的大小进行sin变化
+						if((time+"").split(".")[1]%5 > 0) {
+							var sizes = bufferObj.attributes.size.array;
+							var len = sizes.length;
+
+							for (var i = 0; i < len; i++) {
+
+								sizes[i] = 2 * (1.0 + Math.sin(0.02 * i + time));
+
+							}
+						}
+
+						bufferObj.attributes.size.needsUpdate = true;
+					}
+
+					//this.renderer.render(this.scene, this.camera);
+					this.renderer.clear();
+					this.composer.render( 0.01 );
+				}
+			}
+			app.init();
+
+		</script>
+	</body>
+</html>
