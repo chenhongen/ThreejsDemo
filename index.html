@@ -13,6 +13,7 @@
 	    </div>
 		<div id="container"></div>
 		<script src="https://code.createjs.com/preloadjs-0.6.2.min.js"></script>
+		<script src="https://code.createjs.com/soundjs-0.6.2.min.js"></script>
 
 		<script src="js/three.js"></script>
 		<script src="js/tween.min.js"></script>
@@ -60,6 +61,8 @@
 		</script>
 
 		<script type="text/javascript">
+			createjs.Sound.registerSound("music/1.mp3", "ost");
+
 			// preload.js
 			//放置静态资源的数组
 			var manifest = [
@@ -76,7 +79,8 @@
 				{src: 'js/postprocessing/ShaderPass.js', id: 'ShaderPass'},
 				{src: 'js/postprocessing/FilmPass.js', id: 'FilmPass'},
 				{src: 'obj/ygs2.json', id: 'ygs'},
-				{src: 'obj/gqs1.json', id: 'gqs'}
+				{src: 'obj/gqs1.json', id: 'gqs'},
+				{src: 'music/1.mp3', id: 'music'}
 			];
 			var loader = new createjs.LoadQueue(false,'','Anonymous');  //LoadQueue ( [preferXHR=true]  [basePath=""]  [crossOrigin=""] )
 			loader.on('complete', handleComplete);
@@ -297,6 +301,9 @@
 			//资源加载成功后,进行处理
 			function handleComplete() {
 			    document.getElementById('load').style.display = 'none';
+
+				createjs.Sound.play("ost");
+
 			    app.init();
 			}
 
